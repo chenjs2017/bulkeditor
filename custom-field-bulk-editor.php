@@ -109,6 +109,8 @@ function cfbe_editor() {
 	if (isset($_GET['searchtext'])) {
 		$searchtext = esc_attr($_GET["searchtext"]);
 
+		//id
+
 		//Date
 		if (strpos($searchtext, "..") !== false) {
 			$date_array = explode("..", $searchtext);
@@ -314,15 +316,29 @@ function cfbe_editor() {
 	<?php }
 ?>
 	<p> Translate option
-<select name="operation">
-<option value="none">Don't translate</option>
-<option value="en:zh_CN">en:zh_CN</option>
-<option value="zh_TW:zh_CN">zh_TW:zh_CN</option>
-<option value="zh_CN:zh_TW">zh_CN:zh_TW</option>
-</select>
+		<select name="translation_operation">
+			<option value="none">Don't translate</option>
+			<option value="en:zh_CN">en:zh_CN</option>
+			<option value="zh_TW:zh_CN">zh_TW:zh_CN</option>
+			<option value="zh_CN:zh_TW">zh_CN:zh_TW</option>
+		</select>
+	</p>
+	<p> Regex Replace Option:
+		<input placeholder="source pattern" type="text" name="pattern" id="pattern" value="" class="cfbe_field_name" />
+		<input placeholder='replacement' type="text" name="replacement" id="replacement" value="" class="cfbe_field_name" />
+	</p>
+	<p> Regex Replace Option:
+		<select name="author" id="author">
+		<option value="0" selected="selected"><?php esc_html_e('All Authors', 'ra-export' ); ?></option>
+		<?php
+			$users = get_users( array( 'fields' => array( 'ID' ,'display_name') ) );
+			foreach($users as $o) {
+				echo "<option value='{$o->ID}'>{$o->display_name}</option>\n";
+			}
+		?>
+		</select>
 
 	</p>
-
 	<p>
 		<input type="submit" class="button-primary" value="<?php _e('Save Custom Fields'); ?>" style="margin-right: 15px;" />
 		<label for="cfbe_add_new_values"><input type="checkbox" name="cfbe_add_new_values" id="cfbe_add_new_values"<?php if (isset($_GET['cfbe_add_new_values'])) echo ' checked="checked"'; ?> /> Add New Custom Fields Instead of Updating (this allows you to create multiple values per name)</label>
@@ -429,8 +445,9 @@ function cfbe_save() {
 	$current_record_count = 0;
 	foreach ($posts AS $post) {
 		$post_id = (int)$post;
-		$op = isset($_POST['operation']) ? $_POST['operation']: ' ';	
-		error_log('-------post_id='. $post_id);
+
+		//jchen translation
+		$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
 		$arr = explode(":", $op);
 		if(sizeof($arr) > 1) {
 			$source = $arr[0]; 
@@ -438,6 +455,21 @@ function cfbe_save() {
 			$trans = new GoogleTranslate();
 			cfbe_translate($trans, $source, $target);
 		}
+
+		//jschen replace
+		$pattern = isset($_POST['pattern'])? $_POST['pattern']:'';
+		$replacement = isset($_POST['replacement']) ? $_POST['replacement'] :'';
+		if (strlen($pattern) > 0) {
+			$pattern = '/' . str_replace('\\\\','\\',$pattern) . '/i';
+			cfbe_replace($pattern, $replacement);
+		}
+
+		//jschen replace
+		$author = isset($_POST['author'])? $_POST['author']:'';
+		if ($author > 0) {
+			cfbe_assign_user($author);
+		}
+
 
 		//Multi Value
 		if ($edit_mode == "multi") {
@@ -600,6 +632,19 @@ function cfbe_translate($trans, $source, $target){
 	wp_update_post($post);
 }
 
+function cfbe_replace($pattern, $replacement){
+	global $post_id;
+	$post = get_post($post_id);
+	$post->post_title =preg_replace($pattern, $replacement, $post->post_title);
+	$post->post_content = preg_replace($pattern, $replacement, $post->post_content);
+	wp_update_post($post);
+}
+function cfbe_assign_user($user_id){
+	global $post_id;
+	$post = get_post($post_id);
+	$post->post_author = $user_id;
+	wp_update_post($post);
+}
 function cfbe_meta_clean(&$arr) {
 	if (is_array($arr)) {
 		foreach ($arr as $i => $v) {
