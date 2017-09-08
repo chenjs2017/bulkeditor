@@ -225,7 +225,7 @@ function cfbe_editor() {
 		echo '<tr valign="top" class="' . ($i % 2 ? 'alternate ' : '') . 'format-default" id="post-' . $post->ID . '" rel="' . $i . '">';
 		if ($edit_mode == "single") echo '<th class="check-column" scope="row" style="padding: 9px 0;"><input type="checkbox" value="' . $post->ID . '" name="post[]"></th>';
 		echo '<td class="id column-id">' . $post->ID . '</td>';
-		echo '<td class="post-title page-title column-title"><strong><a title="Edit" href="post.php?post=' . $post->ID . '&amp;action=edit" class="row-title">' . $post->post_title . '</a>' . ($post->post_status != 'publish' ? ' - ' . ucwords($post->post_status) : '') . '</strong></td>';
+		echo '<td class="post-title page-title column-title"><strong><a title="Edit" href="post.php?post=' . $post->ID . '&amp;action=edit" class="row-title">' . $i . ')' . $post->post_title . '</a>' . ($post->post_status != 'publish' ? ' - ' . ucwords($post->post_status) : '') . '</strong></td>';
 		if ($edit_mode == "multi") {
 			echo '<input type="hidden" value="' . $post->ID . '" name="post[]">' . "\n";
 			if ($multi_value_mode != "bulk") {
@@ -327,18 +327,12 @@ function cfbe_editor() {
 		<input placeholder="source pattern" type="text" name="pattern" id="pattern" value="" class="cfbe_field_name" />
 		<input placeholder='replacement' type="text" name="replacement" id="replacement" value="" class="cfbe_field_name" />
 	</p>
-	<p> Regex Replace Option:
-		<select name="author" id="author">
-		<option value="0" selected="selected"><?php esc_html_e('All Authors', 'ra-export' ); ?></option>
-		<?php
-			$users = get_users( array( 'fields' => array( 'ID' ,'display_name') ) );
-			foreach($users as $o) {
-				echo "<option value='{$o->ID}'>{$o->display_name}</option>\n";
-			}
-		?>
-		</select>
 
+	<p> 
+		<input type="checkbox" name="excerpt" id="excerpt" value="on"  />generate excerpt
+		<input type="checkbox" name="permlink" id="excerpt" value="on"  />reset permlink
 	</p>
+
 	<p>
 		<input type="submit" class="button-primary" value="<?php _e('Save Custom Fields'); ?>" style="margin-right: 15px;" />
 		<label for="cfbe_add_new_values"><input type="checkbox" name="cfbe_add_new_values" id="cfbe_add_new_values"<?php if (isset($_GET['cfbe_add_new_values'])) echo ' checked="checked"'; ?> /> Add New Custom Fields Instead of Updating (this allows you to create multiple values per name)</label>
@@ -464,14 +458,29 @@ function cfbe_save() {
 			cfbe_replace($pattern, $replacement);
 		}
 
-		//jschen replace
-		$author = isset($_POST['author'])? $_POST['author']:'';
-		if ($author > 0) {
-			cfbe_assign_user($author);
+		//jschen assign author
+		$user_name='';
+		if (sizeof($posts) > 1) {
+			$user_name=$posts[0] .	'-' . $posts[sizeof($posts) -1];
+			$user_id = username_exists( $user_name );
+			if (!$user_id) {
+				$user_id = wp_create_user( $user_name, $user_name, $user_name . '@gmail.com' );
+			}
+			cfbe_assign_user($user_id);
 		}
 
+		//generate excerpt
+		$excerpt = isset($_POST['excerpt'])? $_POST['excerpt']:'';
+		if ($excerpt == 'on') {
+			cfbe_generate_excerpt();
+		}
 
-		//Multi Value
+		$permlink = isset($_POST['permlink'])? $_POST['permlink']:'';
+		if ($permlink == 'on') {
+			cfbe_reset_permlink();
+		}
+
+	//Multi Value
 		if ($edit_mode == "multi") {
 
 			//Bulk Edit Mode
@@ -623,7 +632,19 @@ function cfbe_save_meta_data($fieldname,$input) {
 		add_post_meta($post_id,$fieldname,$new_data);
 	}
 }
+function cfbe_reset_permlink(){
+	global $post_id;
+	$post = get_post($post_id);
+	$post->post_name = '';//reset permlink
+	wp_update_post($post);
+}
 
+function cfbe_generate_excerpt(){
+	global $post_id;
+	global $wpdb;
+	$sql="update wp_posts set post_excerpt=left(replace(replace(post_content,'<p>',''),'</p>',''),100)  where id=" . $post_id;
+    $wpdb->query($sql);
+}
 function cfbe_translate($trans, $source, $target){
 	global $post_id;
 	$post = get_post($post_id);
@@ -639,11 +660,12 @@ function cfbe_replace($pattern, $replacement){
 	$post->post_content = preg_replace($pattern, $replacement, $post->post_content);
 	wp_update_post($post);
 }
+
 function cfbe_assign_user($user_id){
 	global $post_id;
-	$post = get_post($post_id);
-	$post->post_author = $user_id;
-	wp_update_post($post);
+	global $wpdb;
+	$sql = "update $wpdb->posts set post_author=" . $user_id . ' where id='. $post_id . " or (post_type='attachment' and post_parent=" . $post_id . ')';
+    $wpdb->query($sql);
 }
 function cfbe_meta_clean(&$arr) {
 	if (is_array($arr)) {
@@ -659,8 +681,10 @@ function cfbe_meta_clean(&$arr) {
 	}
 }
 
-
-
+function custom_excerpt_length( $length ) {
+	return 200;
+}
+add_filter( 'excerpt_length', 'custom_excerpt_length', 999 );
 
 //Display Settings Link on Plugin Screen
 add_filter('plugin_action_links', 'cfbe_plugin_action_links', 10, 2);
