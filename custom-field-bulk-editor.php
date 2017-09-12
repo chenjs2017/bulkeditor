@@ -85,7 +85,8 @@ function cfbe_editor() {
 	if (isset($_GET['saved'])) echo '<div class="updated"><p>' . __('Success! Custom field values have been saved.') . '</p></div>';
 
 	echo "<br />";
-
+	$posts_per_page = isset($_GET['posts_per_page']) ? (int)$_GET['posts_per_page'] : 200;
+	$page_number = isset($_GET['page_number']) ? (int)$_GET['page_number'] : 1;
 	if ($edit_mode == "multi") {
 		echo "<p>" . $multi_mode_button . "</p>";
 	}
@@ -94,14 +95,16 @@ function cfbe_editor() {
 	echo '<input type="hidden" name="page" value="cfbe_editor-' . htmlspecialchars($post_type) . '" />'."\n";
 	echo '<input type="hidden" name="edit_mode" value="' . htmlspecialchars($edit_mode) . '" />'."\n";
 	echo '<input type="hidden" name="multi_value_mode" value="' . htmlspecialchars($multi_value_mode) . '" />'."\n";
+	echo 'page number:<input type="text" name="page_number" value="' . htmlspecialchars($page_number) . '" />'."\n";
+	echo 'posts_per_page:<input type="text" name="posts_per_page" value="' . htmlspecialchars($posts_per_page) . '" />'."\n";
 
 	$args = array(
 		"post_type" => $post_type,
-		"posts_per_page" => isset($_GET['posts_per_page']) ? (int)$_GET['posts_per_page'] : 200,
+		"posts_per_page" => $posts_per_page,
 		"post_status" => array("publish", "pending", "draft", "future", "private"),
 		"order" => "ASC",
 		"orderby" => "id",
-		"paged" => isset($_GET['page_number']) ? (int)$_GET['page_number'] : 1,
+		"paged" => $page_number,
 	);
 
 	//Search
@@ -331,6 +334,7 @@ function cfbe_editor() {
 	<p> 
 		<input type="checkbox" name="excerpt" id="excerpt" value="on"  />generate excerpt
 		<input type="checkbox" name="permlink" id="excerpt" value="on"  />reset permlink
+		<input type="checkbox" name="show_image" id="show_image" value="on"  />show image
 	</p>
 
 	<p>
@@ -422,6 +426,13 @@ function cfbe_save() {
 	$posts = (isset($_POST['post']) ? $_POST['post'] : array());
 	$edit_mode = $_POST['edit_mode'] == "multi" ? "multi" : "single";
 
+	$excerpt = isset($_POST['excerpt'])? $_POST['excerpt']:'';
+	$show_image = isset($_POST['show_image'])? $_POST['show_image']:'';
+	$permlink = isset($_POST['permlink'])? $_POST['permlink']:'';
+	$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
+	$pattern = isset($_POST['pattern'])? $_POST['pattern']:'';
+	$replacement = isset($_POST['replacement']) ? $_POST['replacement'] :'';
+
 	//Multi-value Method Array Setup
 	$multi_value_mode = isset($_POST['multi_value_mode']) ? $_POST['multi_value_mode'] : 'single';
 	$arr_names = array();
@@ -441,7 +452,6 @@ function cfbe_save() {
 		$post_id = (int)$post;
 
 		//jchen translation
-		$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
 		$arr = explode(":", $op);
 		if(sizeof($arr) > 1) {
 			$source = $arr[0]; 
@@ -451,8 +461,6 @@ function cfbe_save() {
 		}
 
 		//jschen replace
-		$pattern = isset($_POST['pattern'])? $_POST['pattern']:'';
-		$replacement = isset($_POST['replacement']) ? $_POST['replacement'] :'';
 		if (strlen($pattern) > 0) {
 			$pattern = '/' . str_replace('\\\\','\\',$pattern) . '/i';
 			cfbe_replace($pattern, $replacement);
@@ -470,14 +478,15 @@ function cfbe_save() {
 		}
 
 		//generate excerpt
-		$excerpt = isset($_POST['excerpt'])? $_POST['excerpt']:'';
 		if ($excerpt == 'on') {
 			cfbe_generate_excerpt();
 		}
-
-		$permlink = isset($_POST['permlink'])? $_POST['permlink']:'';
+		
 		if ($permlink == 'on') {
 			cfbe_reset_permlink();
+		}
+		if ($show_image == 'on') {
+			cfbe_show_image();
 		}
 
 	//Multi Value
@@ -667,6 +676,20 @@ function cfbe_assign_user($user_id){
 	$sql = "update $wpdb->posts set post_author=" . $user_id . ' where id='. $post_id . " or (post_type='attachment' and post_parent=" . $post_id . ')';
     $wpdb->query($sql);
 }
+
+function cfbe_show_image() {
+	global $post_id;
+	global $wpdb;
+	$post = get_post($post_id);
+	$sql = "select guid from $wpdb->posts where post_type='attachment' and post_mime_type like 'image%' and post_parent=" . $post_id ;
+	$result = $wpdb->get_results($sql);
+	error_log($sql);
+	foreach ($result as $p) {
+        $post->post_content .= "<image src='" . $p->guid . "'/><br/>";
+	}
+	wp_update_post($post);
+}
+
 function cfbe_meta_clean(&$arr) {
 	if (is_array($arr)) {
 		foreach ($arr as $i => $v) {
