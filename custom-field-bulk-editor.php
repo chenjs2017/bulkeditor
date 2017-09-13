@@ -85,7 +85,7 @@ function cfbe_editor() {
 	if (isset($_GET['saved'])) echo '<div class="updated"><p>' . __('Success! Custom field values have been saved.') . '</p></div>';
 
 	echo "<br />";
-	$posts_per_page = isset($_GET['posts_per_page']) ? (int)$_GET['posts_per_page'] : 200;
+	$posts_per_page = isset($_GET['posts_per_page']) ? (int)$_GET['posts_per_page'] : 150;
 	$page_number = isset($_GET['page_number']) ? (int)$_GET['page_number'] : 1;
 	if ($edit_mode == "multi") {
 		echo "<p>" . $multi_mode_button . "</p>";
@@ -431,6 +431,9 @@ function cfbe_save() {
 	$permlink = isset($_POST['permlink'])? $_POST['permlink']:'';
 	$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
 	$pattern = isset($_POST['pattern'])? $_POST['pattern']:'';
+	if (strlen($pattern) > 0){
+		$pattern = '/' . str_replace('\\\\','\\',$pattern) . '/i';
+	}
 	$replacement = isset($_POST['replacement']) ? $_POST['replacement'] :'';
 
 	//Multi-value Method Array Setup
@@ -462,7 +465,6 @@ function cfbe_save() {
 
 		//jschen replace
 		if (strlen($pattern) > 0) {
-			$pattern = '/' . str_replace('\\\\','\\',$pattern) . '/i';
 			cfbe_replace($pattern, $replacement);
 		}
 
@@ -664,6 +666,7 @@ function cfbe_translate($trans, $source, $target){
 
 function cfbe_replace($pattern, $replacement){
 	global $post_id;
+
 	$post = get_post($post_id);
 	$post->post_title =preg_replace($pattern, $replacement, $post->post_title);
 	$post->post_content = preg_replace($pattern, $replacement, $post->post_content);
