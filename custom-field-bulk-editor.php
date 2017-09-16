@@ -30,7 +30,33 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 **************************************************************************/
+add_action( 'wp_ajax_my_action_create_user', 'my_action_create_user' );
+function my_action_create_user() {
+	global $wpdb; // this is how you get access to the database
+	global $post_id;
+	$id1 = intval( $_POST['id1'] );
+	$id2 = intval( $_POST['id2'] );
 
+	$user_id = cfbe_create_user	($id1, $id2);
+   	echo $user_id;	
+	wp_die(); // this is required to terminate immediately and return a proper response
+}
+
+
+add_action( 'wp_ajax_my_action_save', 'my_action_save' );
+function my_action_save() {
+	global $wpdb; // this is how you get access to the database
+	global $post_id;
+	$post_id = intval( $_POST['id'] );
+	$user_id = intval( $_POST['user_id']);
+	cfbe_translate();
+	cfbe_replace();
+	cfbe_generate_excerpt();
+	cfbe_reset_permlink();
+	cfbe_assign_user($user_id);
+	echo $post_id . 'is done';
+	wp_die(); // this is required to terminate immediately and return a proper response
+}
 
 //Init
 add_action('admin_menu', 'cfbe_init');
@@ -319,7 +345,7 @@ function cfbe_editor() {
 	<?php }
 ?>
 	<p> Translate option
-		<select name="translation_operation">
+		<select name="translation_operation" id='translation_operation'>
 			<option value="none">Don't translate</option>
 			<option value="en:zh_CN">en:zh_CN</option>
 			<option value="zh_TW:zh_CN">zh_TW:zh_CN</option>
@@ -332,13 +358,13 @@ function cfbe_editor() {
 	</p>
 
 	<p> 
-		<input type="checkbox" name="excerpt" id="excerpt" value="on"  />generate excerpt
-		<input type="checkbox" name="permlink" id="excerpt" value="on"  />reset permlink
-		<input type="checkbox" name="show_image" id="show_image" value="on"  />show image
+		<input type="checkbox" name="gen_excerpt" id='gen_excerpt' value='on'  />generate excerpt
+		<input type="checkbox" name="res_permlink" id="res_permlink" value="on"  />reset permlink
 	</p>
 
 	<p>
 		<input type="submit" class="button-primary" value="<?php _e('Save Custom Fields'); ?>" style="margin-right: 15px;" />
+		<input type="button" class="button-primary" name='ajax_submit' id='ajax_submit' value="<?php _e('Ajax submit'); ?>" style="margin-right: 15px;" />
 		<label for="cfbe_add_new_values"><input type="checkbox" name="cfbe_add_new_values" id="cfbe_add_new_values"<?php if (isset($_GET['cfbe_add_new_values'])) echo ' checked="checked"'; ?> /> Add New Custom Fields Instead of Updating (this allows you to create multiple values per name)</label>
 	</p>
 	</form>
@@ -354,7 +380,48 @@ function cfbe_editor() {
 			$("#cfbe_fieldname_1").focus();
 			return false;
 		});
+		$("#ajax_submit").click(function() {
+		    var arr = $( 'input:checkbox:checked').map(function(){
+				if($(this).val() != 'on') {
+					return $(this).val();
+				}
+	      	}).get(); // <---- get all checked checkbox
 
+			if (arr.length == 0) {
+				return false;
+			}
+			var data = {
+				'action': 'my_action_create_user',
+				'id1': arr[0],
+				'id2': arr[arr.length -1] 
+			};
+
+			jQuery.post(ajaxurl, data, function(response) {
+				console.log('create user Got this from the server: ' + response);
+				console.log('translation: ' +  $("#translation_operation").val());
+				jQuery.each( arr, function( i, val ) {
+					if (val != 'on') {
+						var data = {
+							'action': 'my_action_save',
+							'id': val,
+							'user_id': response,
+							'gen_excerpt':  $("#gen_excerpt").val(),
+							'res_permlink':  $("#res_permlink").val(),
+							'translation_operation':  $("#translation_operation").val(),
+							'pattern':  $("#pattern").val(),
+							'replacement':  $("#replacement").val()
+						};
+
+						jQuery.post(ajaxurl, data, function(response) {
+							console.log('post data, Got this from the server: ' + response);
+						});
+
+					}
+				});
+			});
+			alert('done');
+			return false;
+		});
 		//Set To Make Sure We Aren't Getting Funny Values
 		$("#cfbe_current_max").val(3);
 
@@ -411,7 +478,77 @@ function cfbe_editor() {
 	echo '</div">';
 }
 
+function cfbe_reset_permlink(){
+	global $post_id;
+	$permlink = isset($_POST['res_permlink'])? $_POST['res_permlink']:'';
+	if ($permlink == 'on') {
+		$post = get_post($post_id);
+		$post->post_name = '';//reset permlink
+		wp_update_post($post);
+	}
+}
 
+function cfbe_generate_excerpt(){
+	global $post_id;
+	global $wpdb;
+	$excerpt = isset($_POST['gen_excerpt'])? $_POST['gen_excerpt']:'';
+	if ($excerpt == 'on') {
+		$sql="update wp_posts set post_excerpt=left(replace(replace(post_content,'<p>',''),'</p>',''),100)  where id='" . $post_id . "'";
+	    $wpdb->query($sql);
+	}
+}
+
+function cfbe_translate(){
+	global $post_id;
+	//jchen translation
+	$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
+	error_log('translate: id='. $post_id . ',op=' . $op);
+	$arr = explode(":", $op);
+	if(sizeof($arr) > 1) {
+		$source = $arr[0]; 
+		$target = $arr[1];
+		$trans = new GoogleTranslate();
+		$post = get_post($post_id);
+		$post->post_title = $trans->translate($source, $target, $post->post_title);
+		$post->post_content = $trans->translate($source, $target, $post->post_content);
+		wp_update_post($post);
+	}
+}
+
+function cfbe_replace(){
+	global $post_id;
+	//jschen replace
+	$pattern = isset($_POST['pattern'])? $_POST['pattern']:'';
+	if (strlen($pattern) > 0){
+		$pattern = '/' . str_replace('\\\\','\\',$pattern) . '/i';
+	}
+	$replacement = isset($_POST['replacement']) ? $_POST['replacement'] :'';
+
+	if (strlen($pattern) > 0) {
+		$post = get_post($post_id);
+		$post->post_title =preg_replace($pattern, $replacement, $post->post_title);
+		$post->post_content = preg_replace($pattern, $replacement, $post->post_content);
+		wp_update_post($post);
+	}
+}
+
+function cfbe_create_user($start_id, $end_id) {
+	$user_name = $start_id .	'-' . $end_id;
+	$user_id = username_exists( $user_name );
+	if (!$user_id) {
+		$user_id = wp_create_user( $user_name, $user_name, $user_name . '@gmail.com' );
+	}
+	error_log( 'new usernmae=' . $user_name . 'new_userid=' . $user_id);
+	return $user_id;
+}
+function cfbe_assign_user($user_id){
+	global $post_id;
+	global $wpdb;
+	if($user_id != '-1') {
+		$sql = "update $wpdb->posts set post_author=" . $user_id . ' where id='. $post_id . " or (post_type='attachment' and post_parent=" . $post_id . ')';
+	    $wpdb->query($sql);
+	}
+}
 //Save Custom Field
 add_action('admin_init', 'cfbe_save');
 function cfbe_save() {
@@ -426,16 +563,6 @@ function cfbe_save() {
 	$posts = (isset($_POST['post']) ? $_POST['post'] : array());
 	$edit_mode = $_POST['edit_mode'] == "multi" ? "multi" : "single";
 
-	$excerpt = isset($_POST['excerpt'])? $_POST['excerpt']:'';
-	$show_image = isset($_POST['show_image'])? $_POST['show_image']:'';
-	$permlink = isset($_POST['permlink'])? $_POST['permlink']:'';
-	$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
-	$pattern = isset($_POST['pattern'])? $_POST['pattern']:'';
-	if (strlen($pattern) > 0){
-		$pattern = '/' . str_replace('\\\\','\\',$pattern) . '/i';
-	}
-	$replacement = isset($_POST['replacement']) ? $_POST['replacement'] :'';
-
 	//Multi-value Method Array Setup
 	$multi_value_mode = isset($_POST['multi_value_mode']) ? $_POST['multi_value_mode'] : 'single';
 	$arr_names = array();
@@ -449,49 +576,21 @@ function cfbe_save() {
 		}
 	}
 
+	if(sizeof($posts) > 0) {
+		$user_id =cfbe_create_user($posts[0], $posts[sizeof($posts) - 1]);
+	}
 	//Loop Through Each Saved Post
 	$current_record_count = 0;
 	foreach ($posts AS $post) {
 		$post_id = (int)$post;
 
-		//jchen translation
-		$arr = explode(":", $op);
-		if(sizeof($arr) > 1) {
-			$source = $arr[0]; 
-			$target = $arr[1];
-			$trans = new GoogleTranslate();
-			cfbe_translate($trans, $source, $target);
-		}
+		cfbe_translate();
+		cfbe_replace();
+		cfbe_generate_excerpt();
+		cfbe_reset_permlink();
+		cfbe_assign_user($user_id);
 
-		//jschen replace
-		if (strlen($pattern) > 0) {
-			cfbe_replace($pattern, $replacement);
-		}
-
-		//jschen assign author
-		$user_name='';
-		if (sizeof($posts) > 1) {
-			$user_name=$posts[0] .	'-' . $posts[sizeof($posts) -1];
-			$user_id = username_exists( $user_name );
-			if (!$user_id) {
-				$user_id = wp_create_user( $user_name, $user_name, $user_name . '@gmail.com' );
-			}
-			cfbe_assign_user($user_id);
-		}
-
-		//generate excerpt
-		if ($excerpt == 'on') {
-			cfbe_generate_excerpt();
-		}
-		
-		if ($permlink == 'on') {
-			cfbe_reset_permlink();
-		}
-		if ($show_image == 'on') {
-			cfbe_show_image();
-		}
-
-	//Multi Value
+		//Multi Value
 		if ($edit_mode == "multi") {
 
 			//Bulk Edit Mode
@@ -643,55 +742,7 @@ function cfbe_save_meta_data($fieldname,$input) {
 		add_post_meta($post_id,$fieldname,$new_data);
 	}
 }
-function cfbe_reset_permlink(){
-	global $post_id;
-	$post = get_post($post_id);
-	$post->post_name = '';//reset permlink
-	wp_update_post($post);
-}
 
-function cfbe_generate_excerpt(){
-	global $post_id;
-	global $wpdb;
-	$sql="update wp_posts set post_excerpt=left(replace(replace(post_content,'<p>',''),'</p>',''),100)  where id=" . $post_id;
-    $wpdb->query($sql);
-}
-function cfbe_translate($trans, $source, $target){
-	global $post_id;
-	$post = get_post($post_id);
-	$post->post_title = $trans->translate($source, $target, $post->post_title);
-	$post->post_content = $trans->translate($source, $target, $post->post_content);
-	wp_update_post($post);
-}
-
-function cfbe_replace($pattern, $replacement){
-	global $post_id;
-
-	$post = get_post($post_id);
-	$post->post_title =preg_replace($pattern, $replacement, $post->post_title);
-	$post->post_content = preg_replace($pattern, $replacement, $post->post_content);
-	wp_update_post($post);
-}
-
-function cfbe_assign_user($user_id){
-	global $post_id;
-	global $wpdb;
-	$sql = "update $wpdb->posts set post_author=" . $user_id . ' where id='. $post_id . " or (post_type='attachment' and post_parent=" . $post_id . ')';
-    $wpdb->query($sql);
-}
-
-function cfbe_show_image() {
-	global $post_id;
-	global $wpdb;
-	$post = get_post($post_id);
-	$sql = "select guid from $wpdb->posts where post_type='attachment' and post_mime_type like 'image%' and post_parent=" . $post_id ;
-	$result = $wpdb->get_results($sql);
-	error_log($sql);
-	foreach ($result as $p) {
-        $post->post_content .= "<image src='" . $p->guid . "'/><br/>";
-	}
-	wp_update_post($post);
-}
 
 function cfbe_meta_clean(&$arr) {
 	if (is_array($arr)) {
