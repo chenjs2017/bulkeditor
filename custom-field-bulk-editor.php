@@ -419,7 +419,6 @@ function cfbe_editor() {
 					}
 				});
 			});
-			alert('done');
 			return false;
 		});
 		//Set To Make Sure We Aren't Getting Funny Values
@@ -502,7 +501,6 @@ function cfbe_translate(){
 	global $post_id;
 	//jchen translation
 	$op = isset($_POST['translation_operation']) ? $_POST['translation_operation']: ' ';	
-	error_log('translate: id='. $post_id . ',op=' . $op);
 	$arr = explode(":", $op);
 	if(sizeof($arr) > 1) {
 		$source = $arr[0]; 
@@ -538,7 +536,6 @@ function cfbe_create_user($start_id, $end_id) {
 	if (!$user_id) {
 		$user_id = wp_create_user( $user_name, $user_name, $user_name . '@gmail.com' );
 	}
-	error_log( 'new usernmae=' . $user_name . 'new_userid=' . $user_id);
 	return $user_id;
 }
 function cfbe_assign_user($user_id){
