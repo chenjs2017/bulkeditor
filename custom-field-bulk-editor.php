@@ -30,6 +30,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 **************************************************************************/
+
+add_action( 'wp_ajax_my_action_submit_terms', 'my_action_submit_terms' );
+function my_action_submit_terms() {
+	global $wpdb; // this is how you get access to the database
+	$arr1 = explode(',', $_POST['id1']);
+	$arr2 = explode(',', $_POST['id2']);
+
+	$term1 = get_term_by('slug', $arr1[1], $arr1[0]) ;
+	$term2 = get_term_by('slug', $arr2[1], $arr2[0]) ;
+
+	$id1 = $term1->term_id;
+	$id2 = $term2->term_id;
+
+	if ($id1 && $id2 && $id1 != $id2) {
+		$sql = "insert into $wpdb->term_relationships(object_id,term_taxonomy_id)
+			select object_id, " . $id2 . " from $wpdb->term_relationships
+			where term_taxonomy_id = '" .$id1 ."' and term_taxonomy_id <> '" . $id2 . "'";
+
+    $result = $wpdb->query($sql);
+		echo 'sql' . $sql ;
+		echo '\nresult' . $result ;
+	}else {
+		echo 'wrong slugs';
+	}
+
+	wp_die(); // this is required to terminate immediately and return a proper response
+}
+
+
 add_action( 'wp_ajax_my_action_create_user', 'my_action_create_user' );
 function my_action_create_user() {
 	global $wpdb; // this is how you get access to the database
@@ -138,8 +167,6 @@ function cfbe_editor() {
 	if (isset($_GET['searchtext'])) {
 		$searchtext = esc_attr($_GET["searchtext"]);
 
-		//id
-
 		//Date
 		if (strpos($searchtext, "..") !== false) {
 			$date_array = explode("..", $searchtext);
@@ -158,17 +185,20 @@ function cfbe_editor() {
 					'inclusive' => true,
 				),
 			);
-
 		//Regular Search
 		} else {
 			$args["s"] = $_GET["searchtext"];
 		}
 	}
+	$source_term = '<label > source</label>';
+	$source_term .=  '<select name="source_term" id="source_term">';
+	$target_term = '<label > target</label>';
+	$target_term .=  '<select name="target_term" id="target_term">';
 
 	$taxonomies = get_object_taxonomies($post_type);
 	foreach ($taxonomies AS $taxonomy) {
 		$tax = get_taxonomy($taxonomy);
-		$terms = get_terms($taxonomy);
+		$terms = get_terms($taxonomy, array('parent'=>0, 'orderby' => 'count', 'order' => 'DESC'));
 		if (count($terms) == 0) continue;
 		$tax_name = $tax->label;
 		if (isset($_GET[$taxonomy])) {
@@ -176,21 +206,37 @@ function cfbe_editor() {
 			$arg_taxonomy = $taxonomy;
 			if ($arg_taxonomy == "post_tag") $arg_taxonomy = "tag";
 			if ($arg_taxonomy == "category") $arg_taxonomy = "category_name";
-			if ($query_slug != "") $args[$arg_taxonomy] = $_GET[$taxonomy];
+			if ($query_slug != ""){
+				$args[$arg_taxonomy] = $query_slug;
+			}
 		} else {
 			$query_slug = "";
 		}
-		echo '<label for="' . $taxonomy . '">' . $tax_name . '</label>';
+
+		$source_term .='<option value="' . $taxonomy . '">' . $tax_name . '</option>';
+		$target_term .='<option value="' . $taxonomy . '">' . $tax_name . '</option>';
+		echo '<label for="' . $taxonomy . '">' . $tax_name . ' :  </label>';
 		echo '<select name="' . $taxonomy . '" id="' . $taxonomy . '" class="postform">';
-		echo '<option value="">' . sprintf(__('Show All %s'), $tax_name) . '</option>'."\n";
+		echo '<option value="0">' . sprintf(__('Show All of the %s'), $tax_name) . '</option>'."\n";
 		foreach ($terms as $term) {
-			echo '<option value='. $term->slug . ($term->slug == $query_slug ? ' selected="selected"' : '') . '>' . $term->name .' (' . $term->count .')</option>';
+			echo '<option value='. $term->slug . ($term->slug == $query_slug ? ' selected="selected"' : '') . '>' . $term->term_id . $term->name .' (' . $term->count .')</option>';
+			//get sub category
+	    $subterms = get_terms($taxonomy, array('parent'=>$term->term_id, 'orderby' => 'count', 'order' => 'DESC'));
+			foreach ($subterms as $sub) {
+				echo '<option value='. $sub->slug . ($sub->slug == $query_slug ? ' selected="selected"' : '') . '>--'. $sub->term_id .  $sub->name .' (' . $sub->count .')</option>';
+			}
 		}
 		echo "</select>";
 	}
+	$source_term .= '</select>';
+	$target_term .= '</select>';
+	echo $source_term;
+	echo $target_term;
+
 	echo '<label for="searchtext">' . __("Search") . '</label>';
 	echo '<input type="text" name="searchtext" id="searchtext" value="' . $searchtext . '" />';
 	echo '<input type="submit" value="Apply" class="button" />';
+	echo '<input type="button" class="button-primary" name="ajax_submit_terms" id="ajax_submit_terms" value="Ajax submit terms" style="margin-right: 15px;" />';
 	echo '</form>'."\n\n";
 
 
@@ -380,6 +426,30 @@ function cfbe_editor() {
 			$("#cfbe_fieldname_1").focus();
 			return false;
 		});
+
+		$("#ajax_submit_terms").click(function() {
+			var term1 = $("#source_term").val();
+			var term2 = $("#target_term").val();
+
+			var id1 = term1 + ',' + $("#" + term1).val();
+			var id2 = term2 + ',' + $("#" + term2).val();
+
+			console.log('id1= ' + id1);
+			console.log('id2= ' + id2);
+
+			var data = {
+				'action': 'my_action_submit_terms',
+				'id1': id1 ,
+				'id2': id2
+			};
+
+			jQuery.post(ajaxurl, data, function(response) {
+				alert('create user Got this from the server: ' + response);
+			});
+			return false;
+		});
+
+
 		$("#ajax_submit").click(function() {
 		    var arr = $( 'input:checkbox:checked').map(function(){
 				if($(this).val() != 'on') {
