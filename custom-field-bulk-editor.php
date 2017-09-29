@@ -262,6 +262,7 @@ function cfbe_editor() {
 	wp_nonce_field('cfbe-save');
 
 	$all_posts = new WP_Query($args);
+
 	//echo "<pre>" . print_r($all_posts, 1) . "</pre>";
 	?>
 	<table cellspacing="0" class="wp-list-table widefat fixed posts cfbe-table">
@@ -408,8 +409,13 @@ function cfbe_editor() {
 		<input type="checkbox" name="res_permlink" id="res_permlink" value="on"  />reset permlink
 	</p>
 
+	<p> 
+		<span id="submittername">...</span>
+	</p>
+
 	<p>
 		<input type="submit" class="button-primary" value="<?php _e('Save Custom Fields'); ?>" style="margin-right: 15px;" />
+
 		<input type="button" class="button-primary" name='ajax_submit' id='ajax_submit' value="<?php _e('Ajax submit'); ?>" style="margin-right: 15px;" />
 		<label for="cfbe_add_new_values"><input type="checkbox" name="cfbe_add_new_values" id="cfbe_add_new_values"<?php if (isset($_GET['cfbe_add_new_values'])) echo ' checked="checked"'; ?> /> Add New Custom Fields Instead of Updating (this allows you to create multiple values per name)</label>
 	</p>
@@ -483,7 +489,7 @@ function cfbe_editor() {
 						};
 
 						jQuery.post(ajaxurl, data, function(response) {
-							console.log('post data, Got this from the server: ' + response);
+							$("#submittername").text('Got this from the server: ' + response);
 						});
 
 					}
