@@ -40,17 +40,18 @@ function my_action_submit_terms() {
 	$term1 = get_term_by('slug', $arr1[1], $arr1[0]) ;
 	$term2 = get_term_by('slug', $arr2[1], $arr2[0]) ;
 
-	$id1 = $term1->term_id;
-	$id2 = $term2->term_id;
+	$id1 = $term1->term_taxonomy_id;
+	$id2 = $term2->term_taxonomy_id;
 
 	if ($id1 && $id2 && $id1 != $id2) {
 		$sql = "insert into $wpdb->term_relationships(object_id,term_taxonomy_id)
 			select object_id, " . $id2 . " from $wpdb->term_relationships
-			where term_taxonomy_id = '" .$id1 ."' and term_taxonomy_id <> '" . $id2 . "'";
+			where term_taxonomy_id = '" .$id1 ."' 
+			and object_id not in (select object_id from wp_term_relationships where term_taxonomy_id = '" .$id2. "')";
 
-    $result = $wpdb->query($sql);
-		echo 'sql' . $sql ;
-		echo '\nresult' . $result ;
+		$result = $wpdb->query($sql);
+			echo 'sql:   ' . $sql ;
+			echo '    result: ' . var_dump($result) ;
 	}else {
 		echo 'wrong slugs';
 	}
@@ -217,10 +218,10 @@ function cfbe_editor() {
 		$target_term .='<option value="' . $taxonomy . '">' . $tax_name . '</option>';
 		echo '<label for="' . $taxonomy . '">' . $tax_name . ' :  </label>';
 		echo '<select name="' . $taxonomy . '" id="' . $taxonomy . '" class="postform">';
-		echo '<option value="0">' . sprintf(__('Show All of the %s'), $tax_name) . '</option>'."\n";
+		echo '<option value="">' . sprintf(__('Show All of the %s'), $tax_name) . '</option>'."\n";
 		foreach ($terms as $term) {
 			echo '<option value='. $term->slug . ($term->slug == $query_slug ? ' selected="selected"' : '') . '>' . $term->term_id . $term->name .' (' . $term->count .')</option>';
-			//get sub category
+			//get sub category0
 	    $subterms = get_terms($taxonomy, array('parent'=>$term->term_id, 'orderby' => 'count', 'order' => 'DESC'));
 			foreach ($subterms as $sub) {
 				echo '<option value='. $sub->slug . ($sub->slug == $query_slug ? ' selected="selected"' : '') . '>--'. $sub->term_id .  $sub->name .' (' . $sub->count .')</option>';
@@ -237,6 +238,7 @@ function cfbe_editor() {
 	echo '<input type="text" name="searchtext" id="searchtext" value="' . $searchtext . '" />';
 	echo '<input type="submit" value="Apply" class="button" />';
 	echo '<input type="button" class="button-primary" name="ajax_submit_terms" id="ajax_submit_terms" value="Ajax submit terms" style="margin-right: 15px;" />';
+	echo '<label for="searchtext">' ._("&#39640;&#23572;&#22827;&#29699;") . '&#39640;&#23572;&#22827;&#29699;' . '</label>';
 	echo '</form>'."\n\n";
 
 
@@ -262,6 +264,8 @@ function cfbe_editor() {
 	wp_nonce_field('cfbe-save');
 
 	$all_posts = new WP_Query($args);
+	
+	echo "<pre>" . $all_posts->request . "</pre>";
 
 	//echo "<pre>" . print_r($all_posts, 1) . "</pre>";
 	?>
@@ -449,8 +453,9 @@ function cfbe_editor() {
 				'id2': id2
 			};
 
+			alert('about to submit:');
 			jQuery.post(ajaxurl, data, function(response) {
-				alert('create user Got this from the server: ' + response);
+				alert(response);
 			});
 			return false;
 		});
@@ -475,6 +480,10 @@ function cfbe_editor() {
 			jQuery.post(ajaxurl, data, function(response) {
 				console.log('create user Got this from the server: ' + response);
 				console.log('translation: ' +  $("#translation_operation").val());
+				$.ajaxSetup({
+				    async: false
+				});
+
 				jQuery.each( arr, function( i, val ) {
 					if (val != 'on') {
 						var data = {
@@ -489,7 +498,7 @@ function cfbe_editor() {
 						};
 
 						jQuery.post(ajaxurl, data, function(response) {
-							$("#submittername").text('Got this from the server: ' + response);
+							$("#submittername").text( i + ': ' + response);
 						});
 
 					}
